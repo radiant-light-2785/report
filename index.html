@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>LME Report Checker</title>
+  <style>
+    :root{--green:#1f7a58;--green-bright:#00c800;--red:#cc0000;--light-red:#f8cdd2;--light-green:#d7f0d4;--line:#111;--text:#111827;--muted:#6b7280}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#fff;color:var(--text);font-size:14px}
+    .wrap{max-width:1600px;margin:0 auto;padding:24px}
+    h1{margin:0 0 6px;font-size:26px}
+    .sub{color:var(--muted);font-size:13px;margin-bottom:20px}
+    .top{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;align-items:start}
+    .box{border:1px solid #e5e7eb;border-radius:12px;padding:16px;background:#fff;margin-bottom:18px}
+    label{display:block;font-size:12px;font-weight:700;margin-bottom:6px;color:#374151}
+    input[type="text"],input[type="number"]{width:100%;border:1px solid #d1d5db;border-radius:8px;padding:9px 12px;font-size:14px}
+    input[type="file"]{width:100%;font-size:13px;cursor:pointer}
+    .fee-row{display:flex;gap:8px;align-items:center}
+    .fee-row input{max-width:110px}
+    .fee-row span{font-size:12px;color:var(--muted)}
+    .status{font-size:12px;font-weight:700;min-height:18px;margin-top:8px;color:#0f5132}
+    .status.warn{color:#b45309}
+    .status.err{color:#911}
+    .section-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}
+    .section-head h2{margin:0;font-size:19px}
+    .btn{background:var(--green);color:#fff;border:none;padding:8px 14px;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px}
+    .btn:hover{background:#175f43}
+    .table-wrap{overflow:auto;border:1px solid var(--line)}
+    table{border-collapse:collapse;width:100%;font-size:13px;background:#fff}
+    th,td{border:1px solid var(--line);padding:6px 8px;text-align:center;vertical-align:middle;white-space:nowrap}
+    .title-row th{background:var(--green);color:#fff;font-size:16px;font-weight:700}
+    .header-green th{background:var(--green);color:#fff;font-weight:700}
+    .buy-head{background:var(--green-bright)!important;color:#000!important;font-weight:700}
+    .sell-head{background:var(--red)!important;color:#fff!important;font-weight:700}
+    .num{text-align:right}
+    .left{text-align:left}
+    .bold{font-weight:700}
+    .light-red{background:var(--light-red)}
+    .light-green{background:var(--light-green)}
+    .profit{color:#0a6e2b;font-weight:700}
+    .loss{color:#c00020;font-weight:700}
+    .group-sep td{border-top:3px solid var(--line)}
+    .thick-top td,.thick-top th{border-top:3px solid var(--line)}
+    .thick-bottom td,.thick-bottom th{border-bottom:3px solid var(--line)}
+    .spin{display:inline-block;width:11px;height:11px;border:2px solid #ccc;border-top-color:var(--green);border-radius:50%;animation:sp .7s linear infinite;margin-right:5px;vertical-align:middle}
+    @keyframes sp{to{transform:rotate(360deg)}}
+    .hint{font-size:12px;color:var(--muted);margin-top:8px}
+    @media(max-width:900px){.top{grid-template-columns:1fr 1fr}}
+    @media(max-width:560px){.top{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📊 LME Report Checker</h1>
+  <p class="sub">Nhập tên tài khoản → upload ảnh vị thế (tab <b>Trạng thái</b>) và ảnh hạch toán (tab <b>Mua & Bán</b>) → AI tự đọc và tạo bảng chuẩn.</p>
+  <div class="top">
+    <div class="box" style="margin-bottom:0">
+      <label>Tên tài khoản</label>
+      <input id="accountName" type="text" placeholder="VD: PG BANK SIM" oninput="renderOpenOutput()"/>
+    </div>
+    <div class="box" style="margin-bottom:0">
+      <label>Phí giao dịch</label>
+      <div class="fee-row">
+        <input id="feeMt" type="number" value="0.572" step="0.001" min="0" onchange="renderClosedOutput()"/>
+        <span>USD/MT&nbsp;·&nbsp;1 lot&nbsp;25T</span>
+      </div>
+    </div>
+    <div class="box" style="margin-bottom:0">
+      <label>📸 Ảnh vị thế đang có — tab "Trạng thái"</label>
+      <input id="openImage" type="file" accept="image/*" onchange="handleOpenUpload()"/>
+      <div id="openStatus" class="status"></div>
+    </div>
+    <div class="box" style="margin-bottom:0">
+      <label>📸 Ảnh hạch toán — tab "Mua & Bán"</label>
+      <input id="closedImage" type="file" accept="image/*" onchange="handleClosedUpload()"/>
+      <div id="closedStatus" class="status"></div>
+    </div>
+  </div>
+
+  <div class="box">
+    <div class="section-head">
+      <h2>Bảng vị thế đang có</h2>
+      <button class="btn" onclick="copyTable('openOutput')">Copy bảng vị thế</button>
+    </div>
+    <div id="openOutputWrap" class="table-wrap"></div>
+    <div class="hint">Upload ảnh tab "Trạng thái". Bảng sẽ tự cập nhật. Reload trang thì dữ liệu mất.</div>
+  </div>
+
+  <div class="box">
+    <div class="section-head">
+      <h2>Hạch toán lợi nhuận giao dịch</h2>
+      <button class="btn" onclick="copyTable('closedOutput')">Copy bảng hạch toán</button>
+    </div>
+    <div id="closedOutputWrap" class="table-wrap"></div>
+    <div class="hint">Upload ảnh tab "Mua & Bán". Thay đổi phí giao dịch sẽ tính lại tự động.</div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ── State ───────────────────────────────────────────────── */
+let openPositions = [];   // [{code, maturity, side, price, lots, ote}]
+let closedTrades  = [];   // [{contract, openDate, closeDate, maturityDate, side, openPrice, closePrice, lots}]
+
+/* ── Dictionaries ───────────────────────────────────────── */
+const ML  = {F:1,G:2,H:3,J:4,K:5,M:6,N:7,Q:8,U:9,V:10,X:11,Z:12};
+const MN  = ['','Tháng 1','Tháng 2','Tháng 3','Tháng 4','Tháng 5','Tháng 6','Tháng 7','Tháng 8','Tháng 9','Tháng 10','Tháng 11','Tháng 12'];
+
+/* ── Helpers ─────────────────────────────────────────────── */
+function productFromCode(code) {
+  const c = (code || '').toUpperCase();
+  if (/^AHD|^LALZ/.test(c)) return 'Nhôm';
+  if (/^CAD|^LDKZ/.test(c)) return 'Đồng';
+  if (/^ZDS|^LZHZ/.test(c)) return 'Kẽm';
+  return '';
+}
+
+function maturityFromCode(code) {
+  const m = (code || '').toUpperCase().match(/(\d{1,2})([FGHJKMNQUVXZ])(\d{2})$/);
+  if (!m) return '';
+  return `${MN[ML[m[2]]]}/${2000 + Number(m[3])}`;
+}
+
+function maturityDateFromCode(code) {
+  const m = (code || '').toUpperCase().match(/(\d{1,2})([FGHJKMNQUVXZ])(\d{2})$/);
+  if (!m) return '';
+  return `${Number(m[1])}/${String(ML[m[2]]).padStart(2,'0')}/${String(2000+Number(m[3])).slice(-2)}`;
+}
+
+function getFee() { return parseFloat(document.getElementById('feeMt').value) || 0.572; }
+
+function num(n) {
+  if (n === null || n === undefined || n === '') return null;
+  const v = Number(n);
+  return isFinite(v) ? v : null;
+}
+
+function fmtPrice(n) {
+  const v = num(n);
+  if (v === null) return '';
+  const d = Math.abs(v) >= 10000 ? 1 : 2;
+  return v.toLocaleString('en-US', {minimumFractionDigits:d, maximumFractionDigits:d});
+}
+
+function fmtMoney(n) {
+  const v = num(n);
+  if (v === null) return '';
+  const sign = v < 0 ? '-' : '';
+  return sign + '$' + Math.abs(v).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function fmtFee(n) {
+  const v = num(n);
+  if (v === null) return '';
+  return v.toLocaleString('en-US', {minimumFractionDigits:1, maximumFractionDigits:1});
+}
+
+function cls(n) { const v=num(n); return v===null?'':v<0?'loss':v>0?'profit':''; }
+function bg(n)  { const v=num(n); return v===null?'':v<0?'light-red':v>0?'light-green':''; }
+
+function esc(s) {
+  return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+}
+
+/* ── Claude API ──────────────────────────────────────────── */
+async function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload  = () => res(r.result.split(',')[1]);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+function getMediaType(file) {
+  if (file.type === 'image/png')  return 'image/png';
+  if (file.type === 'image/gif')  return 'image/gif';
+  if (file.type === 'image/webp') return 'image/webp';
+  return 'image/jpeg';
+}
+
+async function callClaude(b64, mt, prompt) {
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method : 'POST',
+    headers: {'Content-Type':'application/json'},
+    body   : JSON.stringify({
+      model     : 'claude-sonnet-4-6',
+      max_tokens: 1000,
+      messages  : [{
+        role   : 'user',
+        content: [
+          {type:'image', source:{type:'base64', media_type:mt, data:b64}},
+          {type:'text',  text:prompt}
+        ]
+      }]
+    })
+  });
+
+  const data = await resp.json();
+  if (!resp.ok || data.error) throw new Error(data.error?.message || `HTTP ${resp.status}`);
+
+  const raw   = data.content?.[0]?.text || '';
+  // Strip optional markdown fences
+  const clean = raw.replace(/^```(?:json)?\s*/m,'').replace(/```\s*$/m,'').trim();
+  try {
+    return JSON.parse(clean);
+  } catch {
+    throw new Error(`AI trả về dữ liệu không phải JSON hợp lệ: ${raw.slice(0,200)}`);
+  }
+}
+
+/* ── Prompts ─────────────────────────────────────────────── */
+const PROMPT_OPEN = `You are reading a screenshot from an LME metals trading platform.
+
+STEP 1 — Identify which tab is visible:
+• "status" tab (Trạng thái): A list of open positions. Each row has a label like M1/M2/M3 (Long/Buy) or B1/B2/B3 (Short/Sell), followed by a contract code (e.g. AHDD11U26, ZDSD11U26, LALZ, LZHZ, LDKZ). Columns on the right show a price and an OTE (unrealised P&L in USD, can be negative).
+• "transactions" tab (Mua & Bán): Shows trade history. Rows contain dates, text like "X lot mua" or "X lot bán", prices, "n/a" markers, and P&L values in USD.
+
+STEP 2 — Return ONLY valid JSON with no markdown fences, no extra text:
+{
+  "type": "status" or "transactions",
+  "positions": [
+    {
+      "code":     "exact contract code (e.g. AHDD11U26, LALZ, ZDSD15U26)",
+      "maturity": "e.g. Tháng 9/2026, or empty string",
+      "side":     "Long" or "Short",
+      "price":    number or null,
+      "lots":     integer or null,
+      "ote":      number (USD, can be negative) or null
+    }
+  ]
+}
+
+Extraction rules (only for "status" type):
+- Row label M1/M2/M3… → side = "Long"
+- Row label B1/B2/B3… → side = "Short"
+- Code prefixes: AHD…/LALZ = Nhôm (Al), CAD…/LDKZ = Đồng (Cu), ZDS…/LZHZ = Kẽm (Zn)
+- "price": the opening price of the position (Al/Zn ≈ 3200–3900, Cu ≈ 12000–16000)
+- "ote": the rightmost numeric column (USD), negative = loss
+- If type is "transactions", return positions as empty array []`;
+
+const PROMPT_CLOSED = `You are reading a screenshot from an LME metals trading platform showing the "Mua & Bán" (Buy & Sell) tab with completed round-trip trades.
+
+STEP 1 — Identify which tab is visible:
+• "transactions" tab (Mua & Bán): Rows show dates, "X lot mua" (buy) or "X lot bán" (sell), a price, then either "n/a" (= the opening row, no P&L yet) or an actual USD value (= the closing row).
+• "status" tab (Trạng thái): A position list with labels M1/M2/B1/B2.
+
+STEP 2 — Return ONLY valid JSON with no markdown fences:
+{
+  "type": "transactions" or "status",
+  "trades": [
+    {
+      "contract":     "e.g. CADD11U26, LALZ, LDKZ, LZHZ",
+      "openDate":     "DD/MM/YY",
+      "closeDate":    "DD/MM/YY",
+      "maturityDate": "DD/MM/YY or empty string",
+      "side":         "Long" or "Short",
+      "openPrice":    number,
+      "closePrice":   number,
+      "lots":         integer
+    }
+  ]
+}
+
+Pairing rules (only for "transactions" type):
+- Each instrument section has alternating rows: one with "n/a" (open) and one with a USD P&L value (close).
+- LONG trade: "lot mua" row = open, "lot bán" row = close.
+- SHORT trade: "lot bán" row = open, "lot mua" row = close.
+- "lots": the integer directly before the word "lot" (usually 1).
+- openDate = date on the mua/bán opening row; closeDate = date on the closing row.
+- maturityDate: derive from contract code when possible
+  (e.g. CADD11U26 → day 11, letter U = Sep = month 09, year 26 → "11/09/26").
+  For LALZ/LDKZ/LZHZ, use the prompt date visible in the image or leave empty.
+- If type is "status", return trades as empty array [].`;
+
+/* ── Handlers ─────────────────────────────────────────────── */
+async function handleOpenUpload() {
+  const file = document.getElementById('openImage').files[0];
+  const st   = document.getElementById('openStatus');
+  openPositions = [];
+  renderOpenOutput();
+  if (!file) { st.textContent=''; return; }
+
+  st.className   = 'status';
+  st.innerHTML   = '<span class="spin"></span>AI đang đọc ảnh vị thế…';
+
+  try {
+    const b64    = await fileToBase64(file);
+    const mt     = getMediaType(file);
+    const result = await callClaude(b64, mt, PROMPT_OPEN);
+
+    if (result.type === 'transactions') {
+      st.className = 'status warn';
+      st.textContent = '⚠️ Ảnh này là tab "Mua & Bán" — ô này cần ảnh tab "Trạng thái" (vị thế đang có). Hãy đổi lại ảnh.';
+      return;
+    }
+
+    openPositions = (result.positions || []).map(p => ({
+      code    : (p.code || '').trim().toUpperCase(),
+      maturity: p.maturity || maturityFromCode(p.code || ''),
+      side    : (p.side || 'Long'),
+      price   : num(p.price),
+      lots    : num(p.lots),
+      ote     : num(p.ote),
+    })).filter(p => p.code);
+
+    renderOpenOutput();
+
+    if (openPositions.length) {
+      st.className   = 'status';
+      st.textContent = `✓ Đọc được ${openPositions.length} vị thế.`;
+    } else {
+      st.className   = 'status warn';
+      st.textContent = 'Không nhận ra vị thế nào. Thử crop ảnh sát bảng hơn.';
+    }
+  } catch (err) {
+    st.className   = 'status err';
+    st.textContent = `Lỗi: ${err.message}`;
+    console.error(err);
+  }
+}
+
+async function handleClosedUpload() {
+  const file = document.getElementById('closedImage').files[0];
+  const st   = document.getElementById('closedStatus');
+  closedTrades = [];
+  renderClosedOutput();
+  if (!file) { st.textContent=''; return; }
+
+  st.className = 'status';
+  st.innerHTML = '<span class="spin"></span>AI đang đọc ảnh hạch toán…';
+
+  try {
+    const b64    = await fileToBase64(file);
+    const mt     = getMediaType(file);
+    const result = await callClaude(b64, mt, PROMPT_CLOSED);
+
+    if (result.type === 'status') {
+      st.className   = 'status warn';
+      st.textContent = '⚠️ Ảnh này là tab "Trạng thái" — ô này cần ảnh tab "Mua & Bán" (hạch toán). Hãy đổi lại ảnh.';
+      return;
+    }
+
+    closedTrades = (result.trades || []).map(t => ({
+      contract    : (t.contract || '').trim().toUpperCase(),
+      openDate    : t.openDate    || '',
+      closeDate   : t.closeDate   || '',
+      maturityDate: t.maturityDate || maturityDateFromCode(t.contract || ''),
+      side        : t.side || 'Long',
+      openPrice   : num(t.openPrice),
+      closePrice  : num(t.closePrice),
+      lots        : Math.max(1, Math.round(num(t.lots) || 1)),
+    })).filter(t => t.contract && t.openPrice !== null && t.closePrice !== null);
+
+    renderClosedOutput();
+
+    if (closedTrades.length) {
+      st.className   = 'status';
+      st.textContent = `✓ Đọc được ${closedTrades.length} lệnh tất toán.`;
+    } else {
+      st.className   = 'status warn';
+      st.textContent = 'Không tìm thấy lệnh tất toán. Thử crop ảnh sát bảng hơn.';
+    }
+  } catch (err) {
+    st.className   = 'status err';
+    st.textContent = `Lỗi: ${err.message}`;
+    console.error(err);
+  }
+}
+
+/* ── Render: Open Positions (Bảng vị thế) ───────────────── */
+function renderOpenOutput() {
+  const account  = (document.getElementById('accountName').value || '').trim() || 'TÀI KHOẢN';
+  const PRODS    = ['Nhôm','Đồng','Kẽm'];
+  let body = '', grandOte = 0;
+
+  for (const prd of PRODS) {
+    const rows = openPositions.filter(p => productFromCode(p.code) === prd);
+
+    if (!rows.length) {
+      body += `
+        <tr class="group-sep">
+          <td class="left bold">${esc(prd)}</td>
+          <td>-</td><td>-</td><td></td><td></td><td></td><td></td><td></td><td></td>
+        </tr>
+        <tr>
+          <td></td><td></td><td class="bold">Giá trung bình</td>
+          <td></td><td class="num bold">0</td>
+          <td></td><td class="num bold">0</td>
+          <td></td><td></td>
+        </tr>`;
+      continue;
+    }
+
+    let productOte = 0;
+
+    rows.forEach((r, i) => {
+      const isLong  = r.side.toLowerCase() !== 'short';
+      const oteVal  = r.ote;
+      if (oteVal !== null) { productOte += oteVal; grandOte += oteVal; }
+
+      body += `<tr class="${i === 0 ? 'group-sep' : ''}">
+        <td class="left bold">${i === 0 ? esc(prd) : ''}</td>
+        <td>${esc(r.maturity)}</td>
+        <td>${esc(r.code)}</td>
+        <td class="num">${isLong && r.price !== null ? fmtPrice(r.price) : ''}</td>
+        <td class="num">${isLong && r.lots !== null ? r.lots : ''}</td>
+        <td class="num">${!isLong && r.price !== null ? fmtPrice(r.price) : ''}</td>
+        <td class="num">${!isLong && r.lots !== null ? r.lots : ''}</td>
+        <td class="num ${bg(oteVal)} ${cls(oteVal)}">${oteVal !== null ? fmtMoney(oteVal) : ''}</td>
+        <td></td>
+      </tr>`;
+    });
+
+    // Average row
+    const longRows  = rows.filter(r => r.side.toLowerCase() !== 'short');
+    const shortRows = rows.filter(r => r.side.toLowerCase() === 'short');
+    const lLots  = longRows .reduce((s, r) => s + (r.lots || 0), 0);
+    const sLots  = shortRows.reduce((s, r) => s + (r.lots || 0), 0);
+    const avgBuy = lLots ? longRows .reduce((s, r) => s + (r.price||0)*(r.lots||0), 0) / lLots : null;
+    const avgSel = sLots ? shortRows.reduce((s, r) => s + (r.price||0)*(r.lots||0), 0) / sLots : null;
+
+    body += `<tr class="thick-bottom">
+      <td></td><td></td>
+      <td class="bold">Giá trung bình</td>
+      <td class="num bold">${avgBuy !== null ? fmtPrice(avgBuy) : ''}</td>
+      <td class="num bold">${lLots || ''}</td>
+      <td class="num bold">${avgSel !== null ? fmtPrice(avgSel) : ''}</td>
+      <td class="num bold">${sLots}</td>
+      <td></td>
+      <td class="num ${bg(productOte)} ${cls(productOte)} bold">${fmtMoney(productOte)}</td>
+    </tr>`;
+  }
+
+  document.getElementById('openOutputWrap').innerHTML = `
+  <table id="openOutput">
+    <thead>
+      <tr class="title-row"><th colspan="9">Vị thế đang có: ${esc(account)}</th></tr>
+      <tr>
+        <th>Sản phẩm</th><th>Tháng đáo hạn</th><th>Mã</th>
+        <th colspan="2" class="buy-head">Mua</th>
+        <th colspan="2" class="sell-head">Bán</th>
+        <th>OTE tạm tính (USD)</th><th>Ghi chú</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${body}
+      <tr class="thick-top">
+        <td colspan="7" class="bold">Tổng lãi/lỗ đang mở (OTE):</td>
+        <td class="num ${bg(grandOte)} ${cls(grandOte)} bold">${fmtMoney(grandOte)}</td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>`;
+}
+
+/* ── Render: Closed Trades (Hạch toán) ─────────────────── */
+function computeRow(t) {
+  const fee  = getFee();
+  const lots = Math.max(1, t.lots || 1);
+  const tons = lots * 25;
+  const feeT = fee * 25 * 2 * lots;
+  const isShort = t.side.toLowerCase().includes('short');
+  let before = null;
+  if (t.openPrice !== null && t.closePrice !== null) {
+    before = isShort
+      ? (t.openPrice - t.closePrice) * tons
+      : (t.closePrice - t.openPrice) * tons;
+  }
+  const after = before !== null ? before - feeT : null;
+  return {lots, tons, feeT, before, after};
+}
+
+function renderClosedOutput() {
+  const fee = getFee();
+  let html = `
+  <table id="closedOutput">
+    <thead>
+      <tr class="title-row"><th colspan="16">HẠCH TOÁN LỢI NHUẬN GIAO DỊCH</th></tr>
+      <tr class="header-green">
+        <th>STT</th><th>Người thực hiện</th>
+        <th>Ngày mở lệnh</th><th>Ngày tất toán</th><th>Ngày đáo hạn</th>
+        <th>Mã hợp đồng</th><th>Mặt hàng</th><th>Vị thế</th>
+        <th>Giá mở</th><th>Giá đóng</th>
+        <th>Khối lượng quy đổi (lot)</th><th>Khối lượng quy đổi (tấn)</th>
+        <th>Phí giao dịch (usd/mt)</th><th>Tổng phí/lệnh</th>
+        <th>Lợi nhuận chưa phí giao dịch</th><th>Lợi nhuận sau phí giao dịch</th>
+      </tr>
+    </thead>
+    <tbody>`;
+
+  let totBefore = 0, totAfter = 0;
+
+  closedTrades.forEach((t, i) => {
+    const c = computeRow(t);
+    if (c.before !== null) totBefore += c.before;
+    if (c.after  !== null) totAfter  += c.after;
+    const prd = productFromCode(t.contract);
+
+    html += `<tr>
+      <td>${i+1}</td>
+      <td></td>
+      <td>${esc(t.openDate)}</td>
+      <td>${esc(t.closeDate)}</td>
+      <td>${esc(t.maturityDate)}</td>
+      <td>${esc(t.contract)}</td>
+      <td>${esc(prd)}</td>
+      <td>${esc(t.side)}</td>
+      <td class="num">${t.openPrice  !== null ? fmtPrice(t.openPrice)  : ''}</td>
+      <td class="num">${t.closePrice !== null ? fmtPrice(t.closePrice) : ''}</td>
+      <td class="num">${c.lots}</td>
+      <td class="num">${c.tons}</td>
+      <td class="num">${fee}</td>
+      <td class="num">${fmtFee(c.feeT)}</td>
+      <td class="num ${bg(c.before)} ${cls(c.before)}">${c.before !== null ? fmtMoney(c.before) : ''}</td>
+      <td class="num ${bg(c.after)}  ${cls(c.after)} ">${c.after  !== null ? fmtMoney(c.after)  : ''}</td>
+    </tr>`;
+  });
+
+  html += `
+    <tr class="thick-top">
+      <td colspan="14" class="bold">Tổng</td>
+      <td class="num ${bg(totBefore)} ${cls(totBefore)} bold">${closedTrades.length ? fmtMoney(totBefore) : ''}</td>
+      <td class="num ${bg(totAfter)}  ${cls(totAfter)}  bold">${closedTrades.length ? fmtMoney(totAfter)  : ''}</td>
+    </tr>
+    </tbody></table>`;
+
+  document.getElementById('closedOutputWrap').innerHTML = html;
+}
+
+/* ── Copy table ──────────────────────────────────────────── */
+function copyTable(id) {
+  const tbl = document.getElementById(id);
+  if (!tbl) { alert('Chưa có bảng để copy.'); return; }
+  const html = tbl.outerHTML;
+  const text = [...tbl.rows].map(r => [...r.cells].map(c => c.innerText.replace(/\n/g,' ').trim()).join('\t')).join('\n');
+  if (navigator.clipboard && window.ClipboardItem) {
+    navigator.clipboard.write([new ClipboardItem({
+      'text/html' : new Blob([html], {type:'text/html'}),
+      'text/plain': new Blob([text], {type:'text/plain'}),
+    })]).then(() => alert('✓ Đã copy bảng!')).catch(() => legacyCopy(tbl));
+  } else {
+    legacyCopy(tbl);
+  }
+}
+
+function legacyCopy(tbl) {
+  const range = document.createRange();
+  range.selectNode(tbl);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  document.execCommand('copy');
+  sel.removeAllRanges();
+  alert('✓ Đã copy bảng!');
+}
+
+/* ── Init ────────────────────────────────────────────────── */
+renderOpenOutput();
+renderClosedOutput();
+</script>
+</body>
+</html>
