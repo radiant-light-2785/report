@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LME OCR - Hạch toán giao dịch</title>
+  <link rel="stylesheet" href="assets/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>LME OCR - Hạch toán giao dịch</h1>
+      <p>Upload ảnh lệnh đã tất toán / vị thế đang mở, OCR và xuất bảng theo format hạch toán.</p>
+    </div>
+    <span class="badge">GitHub Pages Ready</span>
+  </header>
+
+  <main class="layout">
+    <section class="card">
+      <h2>1. Thiết lập chung</h2>
+      <div class="grid settings">
+        <label> Tên tài khoản
+          <input id="accountName" value="Tài khoản" />
+        </label>
+        <label> Ngày mở mặc định
+          <input id="openDate" value="15/06" />
+        </label>
+        <label> Ngày tất toán mặc định
+          <input id="settleDate" value="15/06" />
+        </label>
+        <label> Ngày đáo hạn mặc định
+          <input id="maturityDate" value="15/09" />
+        </label>
+        <label> 1 lot = số tấn
+          <input id="tonsPerLot" type="number" step="0.01" value="25" />
+        </label>
+        <label> Phí USD/mt/chiều
+          <input id="feePerMt" type="number" step="0.001" value="0.616" />
+        </label>
+      </div>
+      <p class="hint">Mặc định: 1 lot = 25 tấn, phí khứ hồi 1 lot = 25 × 0.616 × 2 = 30.80 USD.</p>
+    </section>
+
+    <section class="card">
+      <h2>2. Upload ảnh OCR</h2>
+      <div id="dropZone" class="dropzone">
+        <input id="imageInput" type="file" accept="image/*" multiple />
+        <p><strong>Kéo thả ảnh vào đây</strong> hoặc bấm để chọn ảnh.</p>
+        <p class="hint">Có thể upload nhiều ảnh: ảnh Mua & Bán và ảnh Trạng thái.</p>
+      </div>
+      <div class="actions">
+        <button id="runOcrBtn" class="primary">Đọc ảnh OCR</button>
+        <button id="parseTextBtn">Parse lại từ Raw OCR</button>
+        <button id="clearBtn" class="danger">Xóa dữ liệu</button>
+      </div>
+      <div id="progressBox" class="progress hidden">
+        <div class="progressbar"><div id="progressFill"></div></div>
+        <div id="progressText">Đang xử lý...</div>
+      </div>
+      <label class="raw-label">Raw OCR text / có thể sửa tay rồi bấm “Parse lại”</label>
+      <textarea id="rawText" rows="10" placeholder="OCR text sẽ hiện ở đây..."></textarea>
+    </section>
+
+    <section class="card wide">
+      <div class="section-title">
+        <h2>3. HẠCH TOÁN LỢI NHUẬN GIAO DỊCH</h2>
+        <div class="actions inline">
+          <button id="addClosedRowBtn">+ Thêm dòng</button>
+          <button id="copyClosedMarkdownBtn">Copy Markdown</button>
+          <button id="downloadClosedCsvBtn">Tải CSV</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="closedTable">
+          <thead>
+            <tr>
+              <th>Ngày mở lệnh</th>
+              <th>Ngày tất toán</th>
+              <th>Ngày đáo hạn</th>
+              <th>Mã hợp đồng</th>
+              <th>Mặt hàng</th>
+              <th>Vị thế</th>
+              <th>Giá mở</th>
+              <th>Giá đóng</th>
+              <th>Lot</th>
+              <th>Tấn</th>
+              <th>Phí USD/mt</th>
+              <th>Tổng phí/lệnh</th>
+              <th>Giá carry</th>
+              <th>LN chưa phí</th>
+              <th>LN sau phí</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+          <tfoot></tfoot>
+        </table>
+      </div>
+    </section>
+
+    <section class="card wide">
+      <div class="section-title">
+        <h2>4. VỊ THẾ ĐANG CÓ</h2>
+        <div class="actions inline">
+          <button id="addPositionRowBtn">+ Thêm dòng</button>
+          <button id="copyPositionMarkdownBtn">Copy Markdown</button>
+          <button id="downloadPositionCsvBtn">Tải CSV</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="positionTable">
+          <thead>
+            <tr>
+              <th>Sản phẩm</th>
+              <th>Tháng đáo hạn</th>
+              <th>Mã</th>
+              <th>Mua - Giá</th>
+              <th>Mua - Lot</th>
+              <th>Bán - Giá</th>
+              <th>Bán - Lot</th>
+              <th>OTE tạm tính USD</th>
+              <th>Ghi chú</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+          <tfoot></tfoot>
+        </table>
+      </div>
+    </section>
+
+    <section class="card wide">
+      <h2>5. Tổng hợp</h2>
+      <div id="summary" class="summary"></div>
+      <div class="actions">
+        <button id="copyAllMarkdownBtn" class="primary">Copy toàn bộ Markdown</button>
+        <button id="downloadJsonBtn">Tải JSON</button>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Chạy hoàn toàn trên trình duyệt. Không cần Python server khi đưa lên GitHub Pages.</p>
+  </footer>
+
+  <script src="assets/app.js"></script>
+</body>
+</html>
